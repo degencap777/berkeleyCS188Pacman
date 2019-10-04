@@ -1,4 +1,5 @@
 # multiAgents.py
+# solutions by Jimin Sun
 # --------------
 # Licensing Information:  You are free to use or extend these projects for
 # educational purposes provided that (1) you do not distribute or publish
@@ -40,6 +41,7 @@ class ReflexAgent(Agent):
         """
         # Collect legal moves and successor states
         legalMoves = gameState.getLegalActions()
+        self.walls = gameState.getWalls().asList()
 
         # Choose one of the best actions
         scores = [self.evaluationFunction(gameState, action) for action in legalMoves]
@@ -67,69 +69,36 @@ class ReflexAgent(Agent):
         to create a masterful evaluation function.
         """
         # Useful information you can extract from a GameState (pacman.py)
+        "*** YOUR CODE HERE ***"        
         currentFood = currentGameState.getFood()
+        currentGhostStates = currentGameState.getGhostStates()
         
-
         successorGameState = currentGameState.generatePacmanSuccessor(action)
         newPos = successorGameState.getPacmanPosition()
-        newFood = successorGameState.getFood()
-        
-        # print(newFood.asList())
-        # get number of food in same direction
-        xp, yp = newPos
-        
-        
-        newGhostStates = successorGameState.getGhostStates()
-        newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
 
-        "*** YOUR CODE HERE ***"
+        newGhostStates = successorGameState.getGhostStates()
+        currentScaredTimes = [ghostState.scaredTimer for ghostState in currentGhostStates]
         newGhostDistance = [manhattanDistance(newPos, newGhost.getPosition()) for newGhost in newGhostStates]
         minGhostDistance = min(newGhostDistance)
-        currentFoodCount = len(currentFood.asList()) + 1
-        numPossibleActions = len(successorGameState.getLegalActions())
-        # if minGhostDistance > 3:
-            # score = (earnedFood + 1) / maxFoodDistance
-        # else:
-        newFoodCount = len(newFood.asList())
-        if newFoodCount:
-            potential_food = [1]
-            if action == Directions.LEFT:
-              potential_food = [x < xp and y == yp for (x, y) in newFood.asList()]
-            elif action == Directions.RIGHT:
-              potential_food = [x > xp and y == yp for (x, y) in newFood.asList()]
-            elif action == Directions.SOUTH:
-              potential_food = [y < yp and x == xp for (x, y) in newFood.asList()]
-            elif action == Directions.NORTH:
-              potential_food = [y > yp and x == xp for (x, y) in newFood.asList()]
-            potentialFoodCount = sum(potential_food) / len(newFood.asList())
 
-            alignedFoodCount = sum([x == xp or y == yp for (x, y) in newFood.asList()]) / len(newFood.asList())
-            
-            newFoodDistance = [manhattanDistance(newPos, food) for food in newFood.asList()]
-            maxFoodDistance = max(newFoodDistance)
-            minFoodDistance = min(newFoodDistance)
-            earnedFood = currentFoodCount - newFoodCount # > 0 when pacman ate food with action
-        
-            score = (min(minGhostDistance, 5)) / minFoodDistance
-            score += 10 * earnedFood
-            if not earnedFood:
-                score += potentialFoodCount
-            #if action != Directions.STOP:
-            #    score += 0.1 * numPossibleActions
-            # print(score)
+        def count_walls_between(pos, food):
+            x, y = pos
+            fx, fy = food
+            return sum([wx in range(min(x, fx), max(x, fx)+1) and
+                        wy in range(min(y, fy), max(y, fy)+1) for (wx, wy) in self.walls])
+
+        if len(currentFood.asList()):  
+            foodDistance = [manhattanDistance(newPos, food) + 2.0*count_walls_between(newPos, food) 
+                            for food in currentFood.asList()]
+            minFoodDistance = min(foodDistance)
+            if min(currentScaredTimes) > 1:
+                score = min(minGhostDistance, 3) / (minFoodDistance + 0.01)
+            else:
+                score = min(minGhostDistance, 7) / (minFoodDistance + 0.01)
         else:
-            score = 1000
-        # score = 0
-        # for future_action in successorGameState.getLegalActions():
-        #     future_state = successorGameState.generatePacmanSuccessor(action)
-        #     futureGhostDistance = [manhattanDistance(future_state.getPacmanPosition(), newGhost.getPosition()) for newGhost in newGhostStates]
-        #     minFutureGhostDistance = min(futureGhostDistance)
-        #     futureFood = len(future_state.getFood().asList()) + 0.001
-        #     score += minFutureGhostDistance / futureFood
-        # score /= len(successorGameState.getLegalActions())
+            score = 100
 
         return score
-        # return successorGameState.getScore()
 
 
 def scoreEvaluationFunction(currentGameState):
@@ -187,7 +156,7 @@ class MinimaxAgent(MultiAgentSearchAgent):
         "*** YOUR CODE HERE ***"
         # util.raiseNotDefined()
         utility = util.Counter()
-        self.last_agent = gameState.getNumAgents() - 1 # last min agent in ply
+        last_agent = gameState.getNumAgents() - 1 # last min agent in ply
 
         def max_value(state, agent, depth):
             value = -1e5 # initial utility of max node
@@ -207,7 +176,7 @@ class MinimaxAgent(MultiAgentSearchAgent):
         def min_value(state, agent, depth):
             value = 1e5 # initial utility of min node
             if state.getLegalActions(agent):
-                if agent == self.last_agent:
+                if agent == last_agent:
                     # min <- max agent (idx: 0) of next layer
                     for action in state.getLegalActions(agent):
                         max_v = max_value(state.generateSuccessor(agent, action), 0, depth+1)
@@ -237,7 +206,62 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
           Returns the minimax action using self.depth and self.evaluationFunction
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        # util.raiseNotDefined()
+        
+        utility = util.Counter()
+        last_agent = gameState.getNumAgents() - 1 # last min agent in ply
+        alpha = float('-inf')
+        beta = float('inf')
+
+        def max_value(state, agent, depth, alpha, beta):
+            value = float('-inf') # initial utility of max node
+            if depth == self.depth: 
+                # reached max depth -> evaluate utility of state
+                return self.evaluationFunction(state)
+            if len(state.getLegalActions(agent)):
+                # max <- min agent (idx: agent+1) of same layer
+                for action in state.getLegalActions(agent):
+                    min_v = min_value(state.generateSuccessor(agent, action), agent+1, depth, alpha, beta)
+                    value = max(value, min_v)
+                    if value > beta:
+                        return value
+                    alpha = max(alpha, value)
+                return value
+            else:
+                # when pacman dies even before exploring to max depth
+                return self.evaluationFunction(state)
+
+        def min_value(state, agent, depth, alpha, beta):
+            value = float('inf') # initial utility of min node
+            if state.getLegalActions(agent):
+                if agent == last_agent:
+                    # min <- max agent (idx: 0) of next layer
+                    for action in state.getLegalActions(agent):
+                        max_v = max_value(state.generateSuccessor(agent, action), 0, depth+1, alpha, beta)
+                        value = min(value, max_v)
+                        if value < alpha:
+                            return value
+                        beta = min(beta, value)
+                else:
+                    # min <- min agent (idx: agent+1) of same layer
+                    for action in state.getLegalActions(agent):
+                        min_v = min_value(state.generateSuccessor(agent, action), agent+1, depth, alpha, beta)
+                        value = min(value, min_v)
+                        if value < alpha:
+                            return value
+                        beta = min(beta, value)
+                return value
+            else:
+                # when pacman dies even before exploring to max depth
+                return self.evaluationFunction(state)
+        
+        value = float('-inf')
+        for action in gameState.getLegalActions(0):
+            value = min_value(gameState.generateSuccessor(0, action), 1, 0, alpha, beta)
+            utility[action] = value
+            alpha = max(alpha, value)
+
+        return utility.argMax()
 
 class ExpectimaxAgent(MultiAgentSearchAgent):
     """
@@ -252,7 +276,48 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
           legal moves.
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        # util.raiseNotDefined()
+        utility = util.Counter()
+        last_agent = gameState.getNumAgents() - 1 # last min agent in ply
+        
+        def exp_value(state, agent, depth):
+            value = 0
+            if state.getLegalActions(agent):
+                prob = 1.0 / len(state.getLegalActions(agent))
+                if agent == last_agent:
+                    # exp <- max agent (idx: 0) of next layer
+                    for action in state.getLegalActions(agent):
+                        max_v = max_value(state.generateSuccessor(agent, action), 0, depth+1)
+                        value += prob * max_v # expectation
+                else:
+                    # exp <- exp agent (idx: agent+1) of same layer
+                    for action in state.getLegalActions(agent):
+                        exp_v = exp_value(state.generateSuccessor(agent, action), agent+1, depth)
+                        value += prob * exp_v # expectation
+                return value
+            else:
+                # when pacman dies even before exploring to max depth
+                return self.evaluationFunction(state)
+
+        def max_value(state, agent, depth):
+            value = -1e5 # initial utility of max node
+            if depth == self.depth: 
+                # reached max depth -> evaluate utility of state
+                return self.evaluationFunction(state)
+            if len(state.getLegalActions(agent)):
+                # max <- min agent (idx: agent+1) of same layer
+                for action in state.getLegalActions(agent):
+                    exp_v = exp_value(state.generateSuccessor(agent, action), agent+1, depth)
+                    value = max(value, exp_v)
+                return value
+            else:
+                # when pacman dies even before exploring to max depth
+                return self.evaluationFunction(state)
+
+        for action in gameState.getLegalActions(0):
+            utility[action] = exp_value(gameState.generateSuccessor(0, action), 1, 0)
+        return utility.argMax()
+
 
 def betterEvaluationFunction(currentGameState):
     """
@@ -262,7 +327,37 @@ def betterEvaluationFunction(currentGameState):
       DESCRIPTION: <write something here so we know what you did>
     """
     "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    # util.raiseNotDefined()
+    currentPos = currentGameState.getPacmanPosition()
+    currentFood = currentGameState.getFood().asList()
+    currentGhostStates = currentGameState.getGhostStates()
+    currentCapsule = currentGameState.getCapsules()
+    currentScore = currentGameState.getScore()
+    currentScaredTimes = [ghostState.scaredTimer for ghostState in currentGhostStates]
+    walls = currentGameState.getWalls().asList()
+
+    def count_walls_between(pos, food):
+        x, y = pos
+        fx, fy = food
+        fx, fy = int(fx), int(fy)
+        
+        return sum([wx in range(min(x, fx), max(x, fx)+1) and
+                    wy in range(min(y, fy), max(y, fy)+1) for (wx, wy) in walls])
+
+    foodDistance = [manhattanDistance(currentPos, food) for food in currentFood]
+    
+    if currentGameState.isWin():
+        score = 10000
+    else:
+        closestFood = sorted(foodDistance)
+        closeFoodDistance = sum(closestFood[-5:])
+        closestFoodDistance = sum(closestFood[-3:])
+        ghostDistance = [manhattanDistance(currentPos, ghost.getPosition()) + 2* count_walls_between(currentPos, ghost.getPosition()) for ghost in currentGhostStates]
+        minGhostDistance = min(min(ghostDistance), 6)
+        
+        score = currentScore + 0.5 * currentScaredTimes[0] + 1.0 / len(currentFood) - len(currentCapsule) + \
+                minGhostDistance + 2.0 / closeFoodDistance + 2.0 / closestFoodDistance
+    return score
 
 # Abbreviation
 better = betterEvaluationFunction
